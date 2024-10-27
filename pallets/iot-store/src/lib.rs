@@ -69,6 +69,7 @@ pub mod pallet {
         dispatch::DispatchResult, pallet_prelude::*, storage::bounded_vec::BoundedVec,
     };
     use frame_system::pallet_prelude::*;
+    use scale_info::TypeInfo;
     use sp_std::prelude::*;
 
     // The `Pallet` struct serves as a placeholder to implement traits, methods and dispatchables
@@ -76,13 +77,19 @@ pub mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
+    #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    pub struct VehicleInfo<T: Config> {
+        pub manufacturer: BoundedVec<u8, T::MaxManufacturerLength>,
+        pub model: BoundedVec<u8, T::MaxModelLength>,
+    }
+
     /// The pallet's configuration trait.
     ///
     /// All our types and constants a pallet depends on must be declared here.
     /// These types are defined generically and made concrete when the pallet is declared in the
     /// `runtime/src/lib.rs` file of your chain.
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config + TypeInfo {
         /// The overarching runtime event type.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// A type representing the weights required by the dispatchables of this pallet.
@@ -90,25 +97,24 @@ pub mod pallet {
         /// The maximum length of a VIN.
         #[pallet::constant]
         type MaxVinLength: Get<u32>;
-        /// The maximum length of a manufacturer.
         #[pallet::constant]
         type MaxManufacturerLength: Get<u32>;
-        /// The maximum length of a model.
         #[pallet::constant]
         type MaxModelLength: Get<u32>;
-        /// The maximum length of a make.
         #[pallet::constant]
-        type MaxMerkleRootLength: Get<u32>;
+        type MaxIdentifierLength: Get<u32>;
+        #[pallet::constant]
+        type MaxVehicles: Get<u32>;
     }
 
     // Storage definition
     #[pallet::storage]
-    #[pallet::getter(fn vehicle_make_merkle_root)]
-    pub type VehicleMakeMerkleRoot<T: Config> = StorageMap<
+    #[pallet::getter(fn vehicle_identifiers)]
+    pub type VehicleIdentifiers<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        T::AccountId,
-        BoundedVec<u8, T::MaxMerkleRootLength>,
+        (T::AccountId, VehicleInfo<T>),
+        BoundedVec<BoundedVec<u8, T::MaxIdentifierLength>, T::MaxVehicles>,
         OptionQuery,
     >;
 
@@ -125,20 +131,10 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A user has successfully set a new value.
-        SomethingStored {
-            /// The new value set.
-            something: u32,
-            /// The account who set the new value.
+        VehicleIdentifierAdded {
             who: T::AccountId,
+            identifier: BoundedVec<u8, T::MaxIdentifierLength>,
         },
-    }
-
-    #[derive(Encode, Decode, Clone, RuntimeDebug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-    pub enum Operation {
-        Add,
-        Sub,
-        Mul,
     }
 
     /// Errors that can be returned by this pallet.
@@ -151,13 +147,8 @@ pub mod pallet {
     /// information.
     #[pallet::error]
     pub enum Error<T> {
-        /// The value retrieved was `None` as no value was previously set.
-        NoneValue,
-        /// There was an attempt to increment the value in storage over `u32::MAX`.
-        StorageOverflow,
-
-        /// Error when vector bound is not met.
-        ErrorVectorBound,
+        VehicleAlreadyExists,
+        VehicleNotOwnedBySender,
     }
 
     /// The pallet's dispatchable functions ([`Call`]s).
@@ -174,28 +165,38 @@ pub mod pallet {
     /// The [`weight`] macro is used to assign a weight to each call.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// An example dispatchable that takes a single u32 value as a parameter, writes the value
-        /// to storage and emits an event.
-        ///
-        /// It checks that the _origin_ for this call is _Signed_ and returns a dispatch
-        /// error if it isn't. Learn more about origins here: <https://docs.substrate.io/build/origins/>
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::do_something())]
-        pub fn encrypt_numbers(
+        pub fn add_vehicle_identifier(
             origin: OriginFor<T>,
-            number_1: u64,
-            number_2: u64,
+            manufacturer: BoundedVec<u8, T::MaxManufacturerLength>,
+            model: BoundedVec<u8, T::MaxModelLength>,
+            identifier: BoundedVec<u8, T::MaxIdentifierLength>,
         ) -> DispatchResult {
-            // Return a successful `DispatchResult`
+            let who = ensure_signed(origin)?;
+
+            let vehicle_info = VehicleInfo {
+                manufacturer,
+                model,
+            };
+
+            VehicleIdentifiers::<T>::mutate((&who, &vehicle_info), |identifiers| {
+                let identifiers = identifiers.get_or_insert_with(BoundedVec::default);
+                ensure!(
+                    identifiers.len() < T::MaxVehicles::get() as usize,
+                    Error::<T>::VehicleAlreadyExists
+                );
+                identifiers
+                    .try_push(identifier.clone())
+                    .map_err(|_| Error::<T>::VehicleAlreadyExists)?;
+                Result::<_, Error<T>>::Ok(())
+            })?;
+
+            Self::deposit_event(Event::VehicleIdentifierAdded { who, identifier });
+
             Ok(())
         }
     }
 
-    impl<T: Config> Pallet<T> {
-        // fn generate_random_seed() -> u64 {
-        //     let (random_seed, _) = T::Randomness::random(&b"fhe-math"[..]);
-        //     <u64>::decode(&mut random_seed.as_ref())
-        //         .expect("random seed shall always be bigger than u64; qed")
-        // }
-    }
+    impl<T: Config> Pallet<T> {}
 }

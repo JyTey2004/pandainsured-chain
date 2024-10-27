@@ -61,5 +61,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/release/pandainsured-node
-            target/release/wbuild/pandainsured-runtime/pandainsured_runtime.compact.compressed.wasm
+            target/release/pandasured-node
+            target/release/wbuild/pandasured-runtime/pandainsured_runtime.compact.compressed.wasm

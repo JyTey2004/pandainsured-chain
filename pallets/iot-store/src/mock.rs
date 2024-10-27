@@ -26,7 +26,8 @@ impl pallet_iot_store::Config for Test {
     type MaxVinLength = ConstU32<32>;
     type MaxManufacturerLength = ConstU32<32>;
     type MaxModelLength = ConstU32<32>;
-    type MaxMerkleRootLength = ConstU32<32>;
+    type MaxIdentifierLength = ConstU32<32>;
+    type MaxVehicles = ConstU32<100000>;
 }
 
 // Build genesis storage according to the mock runtime.
