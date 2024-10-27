@@ -61,5 +61,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/release/cloak-node
-            target/release/wbuild/cloak-runtime/cloak_runtime.compact.compressed.wasm
+            target/release/pandainsured-node
+            target/release/wbuild/pandainsured-runtime/pandainsured_runtime.compact.compressed.wasm

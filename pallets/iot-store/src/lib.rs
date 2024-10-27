@@ -155,12 +155,6 @@ pub mod pallet {
         NoneValue,
         /// There was an attempt to increment the value in storage over `u32::MAX`.
         StorageOverflow,
-        /// There was an error in the FHE library.
-        FheError,
-        FailedToCreateParameters,
-        EncryptionFailed,
-        DecryptionFailed,
-        EncodingFailed,
 
         /// Error when vector bound is not met.
         ErrorVectorBound,
