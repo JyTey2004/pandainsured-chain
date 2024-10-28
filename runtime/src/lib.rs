@@ -253,12 +253,13 @@ impl pallet_insecure_randomness_collective_flip::Config for Runtime {}
 
 impl pallet_iot_store::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type WeightInfo = ();
+    type WeightInfo = pallet_iot_store::weights::SubstrateWeight<Runtime>;
     type MaxVinLength = ConstU32<32>;
     type MaxManufacturerLength = ConstU32<32>;
     type MaxModelLength = ConstU32<32>;
-    type MaxIdentifierLength = ConstU32<32>;
+    type MaxIdentifierLength = ConstU32<59>;
     type MaxVehicles = ConstU32<100000>;
+    type VINPrefix = ConstU32<32>;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

@@ -105,6 +105,8 @@ pub mod pallet {
         type MaxIdentifierLength: Get<u32>;
         #[pallet::constant]
         type MaxVehicles: Get<u32>;
+        #[pallet::constant]
+        type VINPrefix: Get<u32>;
     }
 
     // Storage definition
@@ -114,7 +116,13 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         (T::AccountId, VehicleInfo<T>),
-        BoundedVec<BoundedVec<u8, T::MaxIdentifierLength>, T::MaxVehicles>,
+        BoundedVec<
+            (
+                BoundedVec<u8, T::MaxIdentifierLength>,
+                BoundedVec<u8, T::VINPrefix>,
+            ),
+            T::MaxVehicles,
+        >,
         OptionQuery,
     >;
 
@@ -134,6 +142,22 @@ pub mod pallet {
         VehicleIdentifierAdded {
             who: T::AccountId,
             identifier: BoundedVec<u8, T::MaxIdentifierLength>,
+            vin_prefix: BoundedVec<u8, T::VINPrefix>,
+        },
+        VehicleIdentifierRetrieved {
+            who: T::AccountId,
+            matching_identifiers: BoundedVec<
+                (
+                    BoundedVec<u8, T::MaxIdentifierLength>,
+                    BoundedVec<u8, T::VINPrefix>,
+                ),
+                T::MaxVehicles,
+            >,
+            vin_prefix: BoundedVec<u8, T::VINPrefix>,
+        },
+        VinPrefixNotFound {
+            who: T::AccountId,
+            vin_prefix: BoundedVec<u8, T::VINPrefix>,
         },
     }
 
@@ -149,6 +173,8 @@ pub mod pallet {
     pub enum Error<T> {
         VehicleAlreadyExists,
         VehicleNotOwnedBySender,
+        VehicleNotFound,
+        TooManyVehicles,
     }
 
     /// The pallet's dispatchable functions ([`Call`]s).
@@ -172,6 +198,7 @@ pub mod pallet {
             manufacturer: BoundedVec<u8, T::MaxManufacturerLength>,
             model: BoundedVec<u8, T::MaxModelLength>,
             identifier: BoundedVec<u8, T::MaxIdentifierLength>,
+            vin_prefix: BoundedVec<u8, T::VINPrefix>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -187,12 +214,72 @@ pub mod pallet {
                     Error::<T>::VehicleAlreadyExists
                 );
                 identifiers
-                    .try_push(identifier.clone())
+                    .try_push((identifier.clone(), vin_prefix.clone()))
                     .map_err(|_| Error::<T>::VehicleAlreadyExists)?;
                 Result::<_, Error<T>>::Ok(())
             })?;
 
-            Self::deposit_event(Event::VehicleIdentifierAdded { who, identifier });
+            Self::deposit_event(Event::VehicleIdentifierAdded {
+                who,
+                identifier,
+                vin_prefix,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(1)]
+        #[pallet::weight(T::WeightInfo::do_something())]
+        pub fn get_vehicle_identifiers(
+            origin: OriginFor<T>,
+            manufacturer: BoundedVec<u8, T::MaxManufacturerLength>,
+            model: BoundedVec<u8, T::MaxModelLength>,
+            vin_prefix: BoundedVec<u8, T::VINPrefix>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let vehicle_info = VehicleInfo {
+                manufacturer: manufacturer.clone(),
+                model: model.clone(),
+            };
+
+            // Retrieve the identifiers associated with the vehicle_info
+            if let Some(identifiers) = VehicleIdentifiers::<T>::get((&who, &vehicle_info)) {
+                let max_vehicle_identifiers = T::MaxVehicles::get() as usize;
+                // Initialize a BoundedVec to store matching identifiers
+                let mut matching_identifiers: BoundedVec<
+                    (
+                        BoundedVec<u8, T::MaxIdentifierLength>,
+                        BoundedVec<u8, T::VINPrefix>,
+                    ),
+                    T::MaxVehicles,
+                > = BoundedVec::with_bounded_capacity(max_vehicle_identifiers);
+
+                // Loop through the identifiers and filter by vin_prefix
+                for (identifier, stored_vin_prefix) in identifiers.iter() {
+                    if *stored_vin_prefix == vin_prefix {
+                        // Add the matching identifier to the matching_identifiers vector
+                        matching_identifiers
+                            .try_push((identifier.clone(), stored_vin_prefix.clone()))
+                            .map_err(|_| Error::<T>::TooManyVehicles)?;
+                    }
+                }
+
+                if !matching_identifiers.is_empty() {
+                    // Emit an event with the matching identifiers
+                    Self::deposit_event(Event::VehicleIdentifierRetrieved {
+                        who,
+                        matching_identifiers,
+                        vin_prefix,
+                    });
+                } else {
+                    // No matching VIN prefix found
+                    Self::deposit_event(Event::VinPrefixNotFound { who, vin_prefix });
+                }
+            } else {
+                // No matching identifier prefix found
+                Self::deposit_event(Event::VinPrefixNotFound { who, vin_prefix });
+            }
 
             Ok(())
         }
